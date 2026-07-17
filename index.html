@@ -384,7 +384,6 @@
 
             const handleSubmit = () => {
                 let totalUserDiff = 0; 
-                let maxTheoreticalDeviation = 0; 
                 const sectorScores = {};
 
                 testData.questions.forEach(q => {
@@ -392,8 +391,6 @@
                     const userGuess = userAnswers[q.id];
                     const diff = Math.abs(userGuess - actualErrors);
                     totalUserDiff += diff;
-                    const maxForQuestion = Math.max(Math.abs(0 - actualErrors), Math.abs(5 - actualErrors));
-                    maxTheoreticalDeviation += maxForQuestion;
 
                     let key = 'logic'; // default
                     const s = q.sector.toLowerCase();
@@ -406,8 +403,10 @@
                     sectorScores[key].push(Math.max(0, 100 - (diff * 20))); 
                 });
 
-                const slope = -90 / maxTheoreticalDeviation;
-                const calculatedScore = 145 + (slope * totalUserDiff);
+                // NEW SCORING: Flat penalty prevents "safe middle guessing"
+                // 145 perfect score. -4 points for every single digit missed.
+                // Guessing '3' on everything yields ~12 to 16 total diff, dropping the score to 81-97.
+                const calculatedScore = 145 - (totalUserDiff * 4);
                 const finalScore = Math.max(0, calculatedScore); 
                 setScore(finalScore);
                 setGameState('results');
