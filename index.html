@@ -347,15 +347,16 @@
                             ${systemDirective}
                             ${contentDirective}
                             Generate a psychometric test of 10 distinct paragraphs.
-                            CRITICAL INSTRUCTION: Each 'text' must be a complex, dense paragraph (at least 6-8 sentences long), rich in context.
-                            TARGET LEVEL: ${targetLevel}
+                            CRITICAL INSTRUCTION: Each 'text' must be a complex, dense paragraph (at least 8-12 sentences long), rich in context.
+                            STRICT COUNTING RULE: You MUST NOT put more than ONE error in a single sentence. If a sentence has a false claim, the rest of that sentence must be completely true. Do not compound multiple false claims into a single "error" object. Each counted error must be one isolated, specific false claim.
+                            TARGET LEVEL: ${targetLevel} (Make the errors appropriately subtle for this level).
                             TOTAL ERRORS: Exactly 30 across all questions.
                             GROUND TRUTH: Empirical reality and formal logic.
                             ERROR TYPES: Factual, Logical, Omission, Contradiction.
                             SECTORS:
                             ${testStructure.map(s => `Slot ${s.id}: ${s.sector} | Target Errors: ${s.errorTarget}`).join('\n')}
                             Generate JSON ONLY:
-                            { "questions": [ { "id": 1, "sector": "string", "text": "paragraph text...", "error_count": int, "errors": [ { "segment": "quoted text of error", "type": "type", "explanation": "why it is wrong" } ] } ] }
+                            { "questions": [ { "id": 1, "sector": "string", "text": "paragraph text...", "error_count": int, "errors": [ { "segment": "quoted exact text of the single error", "type": "type", "explanation": "why it is wrong" } ] } ] }
                         `;
 
                         const text = await callGeminiDirect(prompt);
