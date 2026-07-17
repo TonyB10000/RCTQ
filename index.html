@@ -5,75 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RCTQ - Critical Thinking Engine</title>
     
+    <!-- External Tools (Tailwind, React, Babel) -->
+    <!-- Removed Firebase as requested for public frictionless access -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; }
         .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(148, 163, 184, 0.1); }
         .error-banner { background: #7f1d1d; color: #fca5a5; padding: 1rem; margin: 1rem; border-radius: 0.5rem; font-family: monospace; white-space: pre-wrap; }
+        
+        /* Animations */
         .animate-fadeIn { animation: fadeIn 0.3s ease-in-out; }
+        .animate-slideUp { animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
         /* Form Styles */
         input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #6366f1; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
         select { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem; -webkit-appearance: none; appearance: none; }
         textarea { resize: none; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
     </style>
 </head>
 <body>
     <div id="root"></div>
     <div id="error-container"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-
-        // --- 2. CONFIGURATION ---
-        // SECURITY NOTE: Restrict this key to your domain in Google Cloud Console > Credentials > HTTP Referrers
-        const GEMINI_API_KEY = "AIzaSyDxqVXeJFLeesdXqPAuqY_cp9LVGV9c3-E"; 
-        const STRIPE_LINK = "https://buy.stripe.com/14A5kDgej5t1gmTgjW00000";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBDPlan92YkgldmTYFXQLseX1I_J32PU9w", 
-            authDomain: "rctq-engine.firebaseapp.com",
-            projectId: "rctq-engine",
-            storageBucket: "rctq-engine.firebasestorage.app",
-            messagingSenderId: "568602082362",
-            appId: "1:568602082362:web:5ee59cc90fcf5afe8c8903"
+    <!-- Error Catcher -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const container = document.getElementById('error-container');
+            const msg = `CRITICAL ERROR:\n${message}\nLine: ${lineno}`;
+            container.innerHTML += `<div class="error-banner">${msg}</div>`;
+            console.error(error);
         };
+    </script>
 
-        // Initialize Firebase safely
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
-        const appId = 'rctq-app';
+    <script type="text/babel">
+        const { useState, useEffect, useRef, createContext, useContext } = React;
 
-        // --- 3. ICONS ---
+        // --- CONFIGURATION ---
+        // SECURITY NOTE: Since this app is public, ensure this key is restricted to your GitHub Pages domain in Google Cloud Console.
+        const GEMINI_API_KEY = "AIzaSyDxqVXeJFLeesdXqPAuqY_cp9LVGV9c3-E"; 
+
+        // Toast Context for global non-blocking alerts
+        const ToastContext = createContext();
+
+        // --- ICONS ---
         const Icon = ({ children, className }) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>;
         const Brain = (p) => <Icon {...p}><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></Icon>;
         const Shield = (p) => <Icon {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></Icon>;
         const Zap = (p) => <Icon {...p}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></Icon>;
         const CheckCircle = (p) => <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></Icon>;
-        const LogOut = (p) => <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></Icon>;
         const ChevronRight = (p) => <Icon {...p}><path d="m9 18 6-6-6-6"/></Icon>;
-        const CreditCard = (p) => <Icon {...p}><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></Icon>;
         const BarChart3 = (p) => <Icon {...p}><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></Icon>;
-        const Lock = (p) => <Icon {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></Icon>;
         const Swords = (p) => <Icon {...p}><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></Icon>;
         const BookOpen = (p) => <Icon {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></Icon>;
         const Share2 = (p) => <Icon {...p}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></Icon>;
         const X = (p) => <Icon {...p}><path d="M18 6 6 18"/><path d="M6 6 18 18"/></Icon>;
-        const History = (p) => <Icon {...p}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></Icon>;
+        const HistoryIcon = (p) => <Icon {...p}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></Icon>;
         const Flame = (p) => <Icon {...p}><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.5-3.3a9 9 0 0 0 3 3.3z"/></Icon>;
-        const WifiOff = (p) => <Icon {...p}><line x1="1" x2="23" y1="1" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" x2="12.01" y1="20" y2="20"/></Icon>;
+        const Info = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></Icon>;
 
-        // --- 4. LOGIC & FUNCTIONS ---
+        // --- LOGIC & FUNCTIONS ---
         function distributeErrors(totalErrors = 30, totalSlots = 10, maxPerSlot = 5) {
             const targetThrees = Math.floor(Math.random() * 5); 
             let slots, safety = 0;
@@ -103,8 +107,8 @@
             let errorDetails = "";
             const cleanKey = GEMINI_API_KEY.trim();
 
-            if (cleanKey.includes("PASTE")) {
-                throw new Error("Invalid API Key. You must paste your new key in the code.");
+            if (cleanKey.includes("PASTE") || cleanKey === "") {
+                throw new Error("Invalid API Key. You must set a valid GEMINI_API_KEY in the code.");
             }
             
             for (const attempt of attempts) {
@@ -124,7 +128,7 @@
                     } 
                     
                     const errText = await response.text();
-                    errorDetails += `[${attempt.model}]: ${response.status} -${errText.substring(0, 100)}\n`;
+                    errorDetails += `[${attempt.model}]: ${response.status} - ${errText.substring(0, 100)}\n`;
                     
                 } catch (e) {
                     errorDetails += `[${attempt.model}]: Network Error\n`;
@@ -134,6 +138,27 @@
         }
 
         // ================= UI COMPONENTS =================
+        function ToastProvider({ children }) {
+            const [toast, setToast] = useState(null);
+
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            return (
+                <ToastContext.Provider value={showToast}>
+                    {children}
+                    {toast && (
+                        <div className={`fixed bottom-6 right-6 z-50 px-6 py-3 rounded-lg shadow-xl flex items-center gap-3 animate-slideUp text-white ${toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'}`}>
+                            {toast.type === 'error' ? <X className="w-5 h-5"/> : <CheckCircle className="w-5 h-5"/>}
+                            <span className="font-semibold">{toast.message}</span>
+                        </div>
+                    )}
+                </ToastContext.Provider>
+            );
+        }
+
         function StatBox({ label, value, sub, highlight }) {
             return (
                 <div className={`glass-panel p-4 rounded-xl ${highlight ? 'ring-1 ring-amber-500/50' : ''}`}>
@@ -144,10 +169,10 @@
             );
         }
 
-        function FeatureCard({ icon: Icon, title, desc }) {
+        function FeatureCard({ icon: IconComponent, title, desc }) {
             return (
                 <div className="glass-panel p-6 rounded-xl hover:bg-slate-800/50 transition">
-                    <Icon className="w-8 h-8 text-indigo-400 mb-3" />
+                    <IconComponent className="w-8 h-8 text-indigo-400 mb-3" />
                     <h3 className="font-bold text-white mb-1">{title}</h3>
                     <p className="text-sm text-slate-400">{desc}</p>
                 </div>
@@ -187,7 +212,7 @@
                             <button onClick={onClose} className="text-slate-400 hover:text-white transition"><X className="w-6 h-6" /></button>
                         </div>
                         <div className="p-6">
-                            {loading ? <div className="text-center py-8 text-slate-400 animate-pulse">Consulting the Knowledge Base...</div> : <div className="prose prose-invert prose-sm"><h4 className="text-xl font-bold mb-2">{title}</h4><div className="whitespace-pre-line">{content}</div></div>}
+                            {loading ? <div className="text-center py-8 text-slate-400 animate-pulse">Consulting the Knowledge Base...</div> : <div className="prose prose-invert prose-sm"><h4 className="text-xl font-bold mb-2 text-white">{title}</h4><div className="whitespace-pre-line text-slate-300">{content}</div></div>}
                         </div>
                     </div>
                 </div>
@@ -204,30 +229,10 @@
                             <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
                         </div>
                         <div className="p-6 prose prose-invert prose-sm text-slate-300">
-                            <h4 className="text-white">Tony Berard</h4>
-                            <p>Author of <em>The Bible: A Modern Testament</em> and <em>Points, Lines, and Conic Sections</em>. Creator of <em>Fighting Chess</em> and Tines & Barbs.</p>
-                            <h4 className="text-white mt-4">RCTQ Engine</h4>
-                            <p>A tool to inoculate minds against the post-truth era.</p>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
-        function ReportModal({ isOpen, onClose }) {
-            const [issue, setIssue] = useState("");
-            if (!isOpen) return null;
-            const send = () => { window.location.href = `mailto:tinesandbarbs@gmail.com?subject=RCTQ Issue&body=${encodeURIComponent(issue)}`; onClose(); };
-            return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-                    <div className="bg-slate-900 border border-red-500/30 rounded-2xl w-full max-w-md overflow-hidden relative">
-                        <div className="bg-slate-800 p-4 flex justify-between items-center border-b border-slate-700">
-                            <h3 className="font-bold text-lg text-red-400">Report Issue</h3>
-                            <button onClick={onClose} className="text-slate-400 hover:text-white"><X className="w-6 h-6" /></button>
-                        </div>
-                        <div className="p-6">
-                            <textarea className="w-full bg-slate-800 border border-slate-600 rounded p-3 text-white h-32" value={issue} onChange={e=>setIssue(e.target.value)} placeholder="Describe the problem..." />
-                            <button onClick={send} className="w-full mt-4 bg-red-600 text-white font-bold py-2 rounded">Send Report</button>
+                            <h4 className="text-white font-bold text-lg">Tony Berard</h4>
+                            <p className="mb-4">Author of <em>The Bible: A Modern Testament</em> and <em>Points, Lines, and Conic Sections</em>. Creator of <em>Fighting Chess</em> and Tines & Barbs.</p>
+                            <h4 className="text-white font-bold text-lg mt-4">RCTQ Engine</h4>
+                            <p>A tool to inoculate minds against the post-truth era. Free and open to the public to measure their Reason & Critical Thinking Quotient.</p>
                         </div>
                     </div>
                 </div>
@@ -235,98 +240,80 @@
         }
 
         // ================= VIEWS =================
-        function WelcomeView({ onLogin, isOffline }) {
+        function WelcomeView({ onStart }) {
             return (
-                <div className="flex flex-col items-center justify-center text-center space-y-8 mt-12">
+                <div className="flex flex-col items-center justify-center text-center space-y-8 mt-12 animate-fadeIn">
                     <div className="relative group">
                         <div className="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
                         <div className="relative bg-slate-900 ring-1 ring-slate-900/5 rounded-full p-6"><Brain className="w-24 h-24 text-indigo-500" /></div>
                     </div>
                     <div className="max-w-xl space-y-4">
                         <h2 className="text-4xl font-extrabold text-white">Can you detect the lies?</h2>
-                        <p className="text-lg text-slate-400">Identify logical fallacies, factual errors, and contradictions in infinite AI-generated tests.</p>
+                        <p className="text-lg text-slate-400">Identify logical fallacies, factual errors, and contradictions in infinite AI-generated tests. 100% Free.</p>
                     </div>
-                    <button onClick={onLogin} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-full transition hover:scale-105 flex items-center gap-2">
-                        {isOffline ? "Enter Offline Mode" : "Enter the Simulation"} <ChevronRight className="w-5 h-5" />
+                    <button onClick={onStart} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-full transition hover:scale-105 flex items-center gap-2 shadow-lg shadow-indigo-900/50">
+                        Enter the Simulation <ChevronRight className="w-5 h-5" />
                     </button>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mt-12 text-left">
                         <FeatureCard icon={Shield} title="Physics & Logic" desc="Ground truth based on empirical reality." />
                         <FeatureCard icon={Zap} title="AI Generated" desc="Every test is unique. 10 slots, 30 errors." />
-                        <FeatureCard icon={BarChart3} title="Global Ranking" desc="Measure your RQ against the world." />
+                        <FeatureCard icon={BarChart3} title="Public Access" desc="All premium scenarios and levels are unlocked." />
                     </div>
                 </div>
             );
         }
 
-        function Dashboard({ user, userData, setUpdateUserData, setView, selectedLevel, setSelectedLevel, attackMode, setAttackMode, selectedSector, setSelectedSector, scenarioMode, setScenarioMode, isOffline, onLogout }) {
-            const [showPromo, setShowPromo] = useState(false);
-            const [promoInput, setPromoInput] = useState('');
+        function Dashboard({ profile, setView, selectedLevel, setSelectedLevel, attackMode, setAttackMode, selectedSector, setSelectedSector, scenarioMode, setScenarioMode }) {
             const [showAbout, setShowAbout] = useState(false);
-            const [showReport, setShowReport] = useState(false);
-
-            const handleUnlock = () => { window.location.href = STRIPE_LINK; };
-
-            const handlePromo = async () => {
-                if (promoInput === '555555') {
-                    const newProfile = { ...userData, isPremium: true, level: 11 };
-                    setUpdateUserData(newProfile); 
-                    alert(isOffline ? "Offline Mode: Developer access temporarily unlocked." : "Developer Access Granted");
-                    setShowPromo(false); setPromoInput('');
-                } else { alert("Invalid Code"); }
-            };
-
-            const maxLevel = userData.isPremium ? 11 : 1;
+            const maxLevel = 11; // Everything unlocked
 
             return (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
                     <AboutModal isOpen={showAbout} onClose={() => setShowAbout(false)} />
-                    <ReportModal isOpen={showReport} onClose={() => setShowReport(false)} />
                     
+                    {/* Left Column: Stats */}
                     <div className="space-y-6">
                         <div className="glass-panel p-6 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden">
-                            {isOffline && <div className="absolute top-0 right-0 bg-red-600 text-white text-[10px] px-2 py-1 font-bold flex items-center gap-1"><WifiOff className="w-3 h-3"/> LOCAL MODE</div>}
+                            <div className="absolute top-0 right-0 bg-emerald-600/20 text-emerald-400 text-[10px] px-2 py-1 font-bold border-b border-l border-emerald-500/30 rounded-bl-lg">PUBLIC EDITION</div>
                             <h3 className="text-sm font-bold text-slate-400 mb-4 uppercase tracking-wider">Cognitive Profile</h3>
-                            <CognitiveRadar stats={userData.radar} />
+                            <CognitiveRadar stats={profile.radar} />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <StatBox label="Max Level" value={maxLevel} sub={userData.isPremium ? "Unlocked" : "Locked"} />
-                            <StatBox label="Last Score" value={userData.averageScore ? userData.averageScore.toFixed(0) : '-'} sub="Target: 115+" />
-                            <StatBox label="Tests Taken" value={userData.testsTaken} sub="Total" />
-                            <StatBox label="Status" value={userData.isPremium ? 'Premium' : 'Free'} sub={userData.isPremium ? 'Active' : 'Upgrade'} highlight={!userData.isPremium} />
+                            <StatBox label="Max Level" value={maxLevel} sub="Unlocked" />
+                            <StatBox label="Last Score" value={profile.averageScore ? profile.averageScore.toFixed(0) : '-'} sub="Target: 115+" />
+                            <StatBox label="Tests Taken" value={profile.testsTaken} sub="Total" />
+                            <StatBox label="Access" value="Full" sub="All Features Active" />
                         </div>
                         
-                        {/* Menu Buttons */}
-                        <div className="glass-panel p-4 rounded-xl space-y-2">
-                             <button onClick={() => setShowAbout(true)} className="w-full text-left text-sm text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded transition">About RCTQ</button>
-                             <button onClick={() => setShowReport(true)} className="w-full text-left text-sm text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded transition">Report Issue</button>
-                             <button onClick={onLogout} className="w-full text-left text-sm text-red-400 hover:text-red-300 p-2 hover:bg-slate-800 rounded transition flex items-center gap-2"><LogOut className="w-4 h-4" /> Logout</button>
+                        <div className="glass-panel p-4 rounded-xl">
+                             <button onClick={() => setShowAbout(true)} className="w-full text-left text-sm text-slate-400 hover:text-white p-2 hover:bg-slate-800 rounded transition flex items-center gap-2"><Info className="w-4 h-4"/> About RCTQ</button>
                         </div>
                     </div>
 
+                    {/* Right Column: Configuration */}
                     <div className="lg:col-span-2 space-y-6">
-                        <div className={`glass-panel p-8 rounded-2xl flex flex-col justify-between border-t-4 ${attackMode ? 'border-red-500' : 'border-indigo-500'}`}>
+                        <div className={`glass-panel p-8 rounded-2xl flex flex-col justify-between border-t-4 h-full ${attackMode ? 'border-red-500' : 'border-indigo-500'}`}>
                             <div>
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="text-2xl font-bold text-white">Protocol Config</h3>
                                     <div className="flex items-center gap-2">
                                         <span className={`text-xs font-bold ${!attackMode ? 'text-white' : 'text-slate-500'}`}>RANDOM</span>
-                                        <div onClick={() => { if(userData.isPremium) setAttackMode(!attackMode); }} className={`relative w-12 h-6 transition-colors duration-200 rounded-full cursor-pointer ${attackMode ? 'bg-red-600' : 'bg-slate-600'} ${!userData.isPremium ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <div onClick={() => setAttackMode(!attackMode)} className={`relative w-12 h-6 transition-colors duration-200 rounded-full cursor-pointer ${attackMode ? 'bg-red-600' : 'bg-slate-600'}`}>
                                             <div className={`absolute left-1 top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ${attackMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
                                         </div>
                                         <span className={`text-xs font-bold ${attackMode ? 'text-red-500' : 'text-slate-500'}`}>ATTACK</span>
-                                        {!userData.isPremium && <Lock className="w-3 h-3 text-amber-500" />}
                                     </div>
                                 </div>
-                                <p className="text-slate-400 mb-6">{attackMode ? "WARNING: AI is targeting cognitive biases." : "Standard generative test."}</p>
+                                <p className="text-slate-400 mb-8">{attackMode ? "WARNING: AI is targeting cognitive biases." : "Standard generative test."}</p>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                                     <div>
-                                        <div className="flex justify-between text-sm mb-2"><span className="text-slate-400">Difficulty Level</span><span className={`font-bold ${selectedLevel > 8 ? 'text-red-400' : 'text-indigo-400'}`}>{selectedLevel}</span></div>
-                                        <input type="range" min="1" max="11" value={selectedLevel} onChange={(e) => { const val = parseInt(e.target.value); if (val > maxLevel) return; setSelectedLevel(val); }} disabled={!userData.isPremium} className={!userData.isPremium ? "opacity-50 cursor-not-allowed" : ""} />
+                                        <div className="flex justify-between text-sm mb-3"><span className="text-slate-400">Difficulty Level</span><span className={`font-bold ${selectedLevel > 8 ? 'text-red-400' : 'text-indigo-400'}`}>{selectedLevel}</span></div>
+                                        <input type="range" min="1" max="11" value={selectedLevel} onChange={(e) => setSelectedLevel(parseInt(e.target.value))} />
                                     </div>
                                     <div>
-                                        <div className="flex justify-between text-sm mb-2"><span className="text-slate-400">Sector Focus</span>{!userData.isPremium && <Lock className="w-3 h-3 text-amber-500" />}</div>
-                                        <select value={selectedSector} onChange={(e) => setSelectedSector(e.target.value)} disabled={!userData.isPremium} className={`w-full bg-slate-800 text-white rounded-lg p-2.5 border border-slate-700 outline-none ${!userData.isPremium ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        <div className="flex justify-between text-sm mb-3"><span className="text-slate-400">Sector Focus</span></div>
+                                        <select value={selectedSector} onChange={(e) => setSelectedSector(e.target.value)} className={`w-full bg-slate-800 text-white rounded-lg p-2.5 border border-slate-700 outline-none focus:border-indigo-500 transition`}>
                                             <option value="random">Random Mix (Standard)</option>
                                             <option value="Science">Science Only</option>
                                             <option value="Religion">Religion Only</option>
@@ -336,45 +323,40 @@
                                     </div>
                                 </div>
 
-                                <div className="border-t border-slate-700 pt-6 mb-6">
-                                    <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wide">Debunk Archives</h4>
+                                <div className="border-t border-slate-700 pt-6 mb-8">
+                                    <h4 className="text-sm font-bold text-slate-300 mb-4 uppercase tracking-wide">Debunk Archives</h4>
                                     <div className="grid grid-cols-2 gap-4">
-                                        <button onClick={() => setScenarioMode('historical')} className={`p-3 rounded-lg border text-left transition flex flex-col gap-2 ${scenarioMode === 'historical' ? 'bg-indigo-900/40 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}`}><div className="flex items-center gap-2 font-bold text-sm"><History className="w-4 h-4" /> Historical Myths</div><span className="text-[10px] opacity-70">Phlogiston, Alchemy</span></button>
-                                        <button onClick={() => { if(userData.isPremium) setScenarioMode('recent'); }} className={`p-3 rounded-lg border text-left transition flex flex-col gap-2 relative ${scenarioMode === 'recent' ? 'bg-amber-900/30 border-amber-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500'}${!userData.isPremium ? 'opacity-60 cursor-not-allowed' : ''}`}><div className="flex items-center gap-2 font-bold text-sm"><Flame className={`w-4 h-4 ${scenarioMode === 'recent' ? 'text-amber-500' : ''}`} /> Fresh Debunks {!userData.isPremium && <Lock className="w-3 h-3 text-amber-500 ml-auto" />}</div><span className="text-[10px] opacity-70">Last 6 Months</span></button>
+                                        <button onClick={() => setScenarioMode('historical')} className={`p-4 rounded-xl border text-left transition flex flex-col gap-2 ${scenarioMode === 'historical' ? 'bg-indigo-900/40 border-indigo-500 text-white shadow-inner' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-700/50'}`}><div className="flex items-center gap-2 font-bold text-sm"><HistoryIcon className="w-5 h-5" /> Historical Myths</div><span className="text-xs opacity-70">Phlogiston, Alchemy</span></button>
+                                        <button onClick={() => setScenarioMode('recent')} className={`p-4 rounded-xl border text-left transition flex flex-col gap-2 relative ${scenarioMode === 'recent' ? 'bg-amber-900/30 border-amber-500 text-white shadow-inner' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-700/50'}`}><div className="flex items-center gap-2 font-bold text-sm"><Flame className={`w-5 h-5 ${scenarioMode === 'recent' ? 'text-amber-500' : ''}`} /> Fresh Debunks</div><span className="text-xs opacity-70">Last 12 Months</span></button>
                                     </div>
                                 </div>
                             </div>
                             
-                            <button onClick={() => setView('game')} className={`w-full py-4 font-bold rounded-xl transition flex items-center justify-center gap-2 text-white ${attackMode ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
-                                {attackMode ? <Swords className="w-5 h-5" /> : <Zap className="w-5 h-5" />}
+                            <button onClick={() => setView('game')} className={`w-full py-4 font-bold rounded-xl transition flex items-center justify-center gap-2 text-white text-lg ${attackMode ? 'bg-red-600 hover:bg-red-500 shadow-lg shadow-red-900/30' : 'bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-900/30'}`}>
+                                {attackMode ? <Swords className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
                                 {attackMode ? 'Initialize ATTACK Protocol' : 'Initialize Test Protocol'}
                             </button>
-
-                            <div className="mt-4 text-center h-8">
-                                {!showPromo ? ( <button onClick={() => setShowPromo(true)} className="text-xs text-slate-500 hover:text-indigo-400 underline decoration-dotted transition">Enter Promo Code</button> ) : ( <div className="flex items-center justify-center gap-2 animate-fadeIn"><input type="text" value={promoInput} onChange={(e) => setPromoInput(e.target.value)} placeholder="Code" className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-white w-24 outline-none" /><button onClick={handlePromo} className="bg-slate-700 hover:bg-emerald-600 text-white text-xs px-3 py-1.5 rounded transition">Apply</button><button onClick={() => setShowPromo(false)} className="text-slate-500 hover:text-white"><Icon className="w-4 h-4"><path d="M18 6 6 18"/><path d="M6 6 18 18"/></Icon></button></div> )}
-                            </div>
-                        </div>
-
-                        <div className={`glass-panel p-8 rounded-2xl flex flex-col justify-between border-t-4 ${userData.isPremium ? 'border-emerald-500' : 'border-amber-500'}`}>
-                            <div><h3 className="text-2xl font-bold text-white mb-2">{userData.isPremium ? 'Neural Link Active' : 'Unlock Full Access'}</h3><p className="text-slate-400 mb-6">{userData.isPremium ? "You have full access." : "Upgrade to unlock recent debunks and attack mode."}</p></div>
-                            {userData.isPremium ? ( <button disabled className="w-full py-4 bg-slate-800 text-emerald-500 font-bold rounded-xl flex items-center justify-center gap-2 cursor-default"><CheckCircle className="w-5 h-5" /> Plan Active</button> ) : ( <button onClick={handleUnlock} className="w-full py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2">Unlock - $5/mo <CreditCard className="w-5 h-5 ml-1" /></button> )}
                         </div>
                     </div>
                 </div>
             );
         }
 
-        function GameEngine({ user, userData, setUpdateUserData, setView, targetLevel, attackMode, selectedSector, scenarioMode, isOffline }) {
+        function GameEngine({ profile, setUpdateProfile, setView, targetLevel, attackMode, selectedSector, scenarioMode }) {
             const [isLoading, setIsLoading] = useState(true);
             const [testData, setTestData] = useState(null);
             const [userAnswers, setUserAnswers] = useState({}); 
             const [gameState, setGameState] = useState('playing'); 
             const [score, setScore] = useState(0);
+            
+            // Codex State
             const [isCodexOpen, setIsCodexOpen] = useState(false);
             const [codexContent, setCodexContent] = useState("");
             const [codexTitle, setCodexTitle] = useState("");
             const [codexLoading, setCodexLoading] = useState(false);
+            
             const [errorMsg, setErrorMsg] = useState(""); 
+            const showToast = useContext(ToastContext);
 
             useEffect(() => {
                 const generateTest = async () => {
@@ -402,7 +384,8 @@
 
                         const prompt = `
                             You are the RCTQ (Reason & Critical Thinking Quotient) Engine.
-                            ${systemDirective}${contentDirective}
+                            ${systemDirective}
+                            ${contentDirective}
                             Generate a psychometric test of 10 distinct paragraphs.
                             CRITICAL INSTRUCTION: Each 'text' must be a complex, dense paragraph (at least 6-8 sentences long), rich in context.
                             TARGET LEVEL: ${targetLevel}
@@ -411,14 +394,14 @@
                             ERROR TYPES: Factual, Logical, Omission, Contradiction.
                             SECTORS:
                             ${testStructure.map(s => `Slot ${s.id}: ${s.sector} | Target Errors: ${s.errorTarget}`).join('\n')}
-                            Generate JSON ONLY:
+                            Generate JSON ONLY without markdown wrapping:
                             { "questions": [ { "id": 1, "sector": "string", "text": "paragraph text...", "error_count": int, "errors": [ { "segment": "quoted text of error", "type": "type", "explanation": "why it is wrong" } ] } ] }
                         `;
 
-                        // CALL GEMINI DIRECTLY (No Backend Required)
+                        // Call Gemini API
                         const text = await callGeminiDirect(prompt);
                         
-                        // Parse JSON from the response text
+                        // Parse JSON safely
                         let jsonText = text.replace(/```json/g, '').replace(/```/g, '').trim();
                         const data = JSON.parse(jsonText);
                         
@@ -430,7 +413,6 @@
                     } catch (err) { 
                         console.error("Generation failed", err); 
                         setErrorMsg(err.message); 
-                        setIsLoading(false);
                     } finally { setIsLoading(false); }
                 };
                 generateTest();
@@ -439,7 +421,7 @@
             const handleIncrement = (qid) => { setUserAnswers(prev => ({ ...prev, [qid]: Math.min(prev[qid] + 1, 5) })); };
             const handleDecrement = (qid) => { setUserAnswers(prev => ({ ...prev, [qid]: Math.max(prev[qid] - 1, 0) })); };
 
-            const handleSubmit = async () => {
+            const handleSubmit = () => {
                 let totalUserDiff = 0; 
                 let maxTheoreticalDeviation = 0; 
                 const sectorScores = {};
@@ -452,7 +434,7 @@
                     const maxForQuestion = Math.max(Math.abs(0 - actualErrors), Math.abs(5 - actualErrors));
                     maxTheoreticalDeviation += maxForQuestion;
 
-                    let key = 'Logic';
+                    let key = 'logic';
                     const s = q.sector.toLowerCase();
                     if(s.includes('science')) key = 'science'; else if(s.includes('religion')) key = 'religion'; else if(s.includes('pseudo')) key = 'pseudo'; else if(s.includes('supernat')) key = 'supernat';
                     if(!sectorScores[key]) sectorScores[key] = [];
@@ -465,72 +447,96 @@
                 setScore(finalScore);
                 setGameState('results');
 
-                // --- SAVE DATA (LOCAL STORAGE + DB) ---
-                const newRadar = { ...userData.radar };
+                // --- UPDATE LOCAL PROFILE MEMORY ---
+                const newRadar = { ...profile.radar };
                 Object.keys(sectorScores).forEach(k => { 
                     const avg = sectorScores[k].reduce((a,b)=>a+b,0) / sectorScores[k].length; 
-                    newRadar[k] = (newRadar[k] + avg) / 2; 
+                    newRadar[k] = (newRadar[k] + avg) / 2; // Moving average
                 });
                 
                 const updates = { 
-                    testsTaken: (userData.testsTaken || 0) + 1, 
+                    testsTaken: profile.testsTaken + 1, 
                     averageScore: finalScore, 
                     radar: newRadar 
                 };
                 
-                const newProfile = { ...userData, ...updates };
-                setUpdateUserData(newProfile); // Update local + DB
-
-                if (!isOffline && db && user) {
-                    try {
-                        await db.collection('artifacts').doc(appId).collection('users').doc(user.uid).collection('history').add({ timestamp: new Date(), level: targetLevel, score: finalScore, details: userAnswers });
-                    } catch(e) { console.error("Save history failed", e); }
-                }
+                setUpdateProfile({ ...profile, ...updates });
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
             const handleCodexRequest = async (errorType, context) => {
-                if (!userData.isPremium) { alert("The Codex is a Premium feature."); return; }
-                setIsCodexOpen(true); setCodexLoading(true); setCodexTitle(errorType);
+                setIsCodexOpen(true); 
+                setCodexLoading(true); 
+                setCodexTitle(errorType);
                 const prompt = `You are The Codex, a logic tutor. Define: "${errorType}". User context: "${context}". Explain error in 2 sentences. Provide 3 examples.`;
                 try {
                     const text = await callGeminiDirect(prompt);
                     setCodexContent(text);
-                } catch (e) { setCodexContent("Connection interrupted."); } finally { setCodexLoading(false); }
+                } catch (e) { 
+                    setCodexContent("Connection interrupted. Codex is unavailable."); 
+                } finally { 
+                    setCodexLoading(false); 
+                }
             };
 
             const handleChallenge = () => {
-                const msg = `I scored ${score.toFixed(0)} on RCTQ Level${targetLevel}. Can you beat me? https://rctq.app`;
-                navigator.clipboard.writeText(msg).then(() => { alert("Challenge Link Copied!"); }).catch(() => { alert("Challenge:\n" + msg); });
+                const msg = `I scored ${score.toFixed(0)} on RCTQ Level ${targetLevel}. Can you beat me? Take the test at https://rctq.app`; // Adjust URL when hosted
+                navigator.clipboard.writeText(msg)
+                    .then(() => showToast("Challenge Link Copied!"))
+                    .catch(() => showToast("Failed to copy.", "error"));
             };
 
-            if (isLoading) { return ( <div className="flex flex-col items-center justify-center h-96 space-y-4"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div><div className={`text-slate-400 animate-pulse ${attackMode ? 'text-red-400' : ''}`}>{attackMode ? "Calibrating Attack Vectors..." : "Constructing Logic Matrices..."}</div></div> ); }
+            if (isLoading) { return ( <div className="flex flex-col items-center justify-center h-[70vh] space-y-6"><div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-500"></div><div className={`text-lg text-slate-400 animate-pulse tracking-widest uppercase ${attackMode ? 'text-red-400' : ''}`}>{attackMode ? "Calibrating Attack Vectors..." : "Constructing Logic Matrices..."}</div></div> ); }
 
             if (!testData) {
                 return (
-                    <div className="flex flex-col items-center justify-center h-64 text-center">
-                        <div className="text-red-400 font-bold mb-4">Initialization Failed</div>
-                        <p className="text-slate-400 mb-6 text-sm max-w-md">{errorMsg || "The AI could not generate the test protocol."}<br/>Please try again.</p>
-                        <button onClick={() => setView('dashboard')} className="px-6 py-2 bg-slate-700 rounded-lg text-white hover:bg-slate-600 transition">Return to Dashboard</button>
+                    <div className="flex flex-col items-center justify-center h-[70vh] text-center animate-fadeIn">
+                        <div className="text-red-400 font-bold mb-4 text-2xl">Initialization Failed</div>
+                        <p className="text-slate-400 mb-8 text-sm max-w-md bg-slate-900 p-4 rounded-lg font-mono border border-slate-800">{errorMsg || "The AI could not generate the test protocol."}</p>
+                        <button onClick={() => setView('dashboard')} className="px-8 py-3 bg-slate-700 rounded-lg text-white hover:bg-slate-600 transition font-bold shadow-lg">Return to Dashboard</button>
                     </div>
                 );
             }
 
             if (gameState === 'results') {
                 return (
-                    <div className="space-y-6">
+                    <div className="space-y-6 animate-fadeIn pb-12">
                         <CodexModal isOpen={isCodexOpen} onClose={() => setIsCodexOpen(false)} title={codexTitle} content={codexContent} loading={codexLoading} />
-                        <div className={`text-center p-8 rounded-2xl border relative overflow-hidden ${attackMode ? 'bg-red-900/30 border-red-700' : 'bg-slate-800 border-slate-700'}`}>
+                        <div className={`text-center p-10 rounded-2xl border-2 relative overflow-hidden shadow-2xl ${attackMode ? 'bg-red-900/20 border-red-700/50' : 'bg-slate-800 border-slate-700'}`}>
                             <h2 className="text-3xl font-bold text-white mb-2">Test Complete</h2>
-                            <div className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-4">{score.toFixed(0)}</div>
-                            <p className="text-slate-400 mb-6">RCTQ Index ({attackMode ? 'ATTACK MODE' : `Level ${targetLevel}`})</p>
-                            <div className="flex justify-center gap-4"><button onClick={() => setView('dashboard')} className="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-white font-semibold">Return to Dashboard</button><button onClick={handleChallenge} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-white font-semibold flex items-center gap-2"><Share2 className="w-4 h-4" /> Challenge Friend</button></div>
+                            <div className="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400 mb-4">{score.toFixed(0)}</div>
+                            <p className="text-slate-400 mb-8 text-lg">RCTQ Index ({attackMode ? 'ATTACK MODE' : `Level ${targetLevel}`})</p>
+                            <div className="flex flex-col sm:flex-row justify-center gap-4">
+                                <button onClick={() => setView('dashboard')} className="px-8 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl text-white font-bold transition">Return to Dashboard</button>
+                                <button onClick={handleChallenge} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-indigo-900/50"><Share2 className="w-5 h-5" /> Challenge Friend</button>
+                            </div>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                             {testData.questions.map(q => (
-                                <div key={q.id} className="glass-panel p-6 rounded-xl border border-slate-700">
-                                    <div className="flex justify-between items-start mb-4"><div className="text-sm font-bold text-indigo-400 uppercase">{q.sector}</div><div className="flex gap-4 text-sm"><div className="text-slate-400">You found: <span className="text-white font-bold">{userAnswers[q.id]}</span></div><div className={userAnswers[q.id] === q.error_count ? "text-emerald-400" : "text-amber-400"}>Actual: <span className="font-bold">{q.error_count}</span></div></div></div>
-                                    <p className="text-slate-300 mb-4 leading-relaxed">{q.text}</p>
-                                    <div className="bg-slate-900/50 rounded-lg p-4"><div className="text-xs font-bold text-slate-500 uppercase mb-2">Analysis (Click to Open Codex)</div><ul className="space-y-2">{q.errors.map((err, i) => ( <li key={i} onClick={() => handleCodexRequest(err.type, err.segment)} className={`text-sm p-2 rounded transition cursor-pointer flex items-start gap-2 ${userData.isPremium ? 'hover:bg-indigo-900/30 group' : 'opacity-70'}`}><BookOpen className={`w-4 h-4 mt-0.5 shrink-0 ${userData.isPremium ? 'text-indigo-400 group-hover:text-white' : 'text-slate-600'}`} /><span className="text-amber-200/80"><span className="text-amber-500 font-bold">[{err.type}]</span> {err.explanation}</span></li> ))}</ul></div>
+                                <div key={q.id} className="glass-panel p-6 sm:p-8 rounded-2xl border border-slate-700/50 relative">
+                                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                                        <div className="text-sm font-bold bg-indigo-900/50 text-indigo-300 uppercase px-3 py-1 rounded-full">{q.sector}</div>
+                                        <div className="flex gap-6 text-sm bg-slate-900 px-4 py-2 rounded-lg">
+                                            <div className="text-slate-400">You found: <span className="text-white font-bold text-lg">{userAnswers[q.id]}</span></div>
+                                            <div className={userAnswers[q.id] === q.error_count ? "text-emerald-400" : "text-amber-400"}>Actual: <span className="font-bold text-lg">{q.error_count}</span></div>
+                                        </div>
+                                    </div>
+                                    <p className="text-slate-200 mb-6 leading-relaxed font-serif text-lg">{q.text}</p>
+                                    <div className="bg-slate-900/80 rounded-xl p-5 border border-slate-800">
+                                        <div className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2"><Info className="w-4 h-4"/> AI Analysis (Click to open Codex)</div>
+                                        {q.errors.length === 0 ? (
+                                            <div className="text-slate-400 italic text-sm">No errors present in this paragraph.</div>
+                                        ) : (
+                                            <ul className="space-y-3">
+                                                {q.errors.map((err, i) => ( 
+                                                    <li key={i} onClick={() => handleCodexRequest(err.type, err.segment)} className="text-sm p-3 rounded-lg transition cursor-pointer flex items-start gap-3 hover:bg-indigo-900/40 border border-transparent hover:border-indigo-500/30 group">
+                                                        <BookOpen className="w-5 h-5 mt-0.5 shrink-0 text-indigo-400 group-hover:text-indigo-300" />
+                                                        <span className="text-slate-300 group-hover:text-white leading-relaxed"><span className="text-amber-400 font-bold tracking-wide">[{err.type}]</span> {err.explanation}</span>
+                                                    </li> 
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -539,137 +545,114 @@
             }
 
             return (
-                <div className="space-y-6 pb-20">
-                    <div className={`flex justify-between items-center sticky top-0 bg-slate-900/95 backdrop-blur z-10 p-4 border-b -mx-4 ${attackMode ? 'border-red-800' : 'border-slate-800'}`}>
-                        <div className="flex flex-col"><h2 className="font-bold text-slate-200">Level {targetLevel} Assessment</h2>{attackMode && <span className="text-xs font-bold text-red-500 animate-pulse">ATTACK MODE ACTIVE</span>}</div>
-                        <div className="text-sm text-slate-400">Errors identified: <span className="text-white font-bold">{Object.values(userAnswers).reduce((a,b)=>a+b, 0)}</span> / 30</div>
+                <div className="space-y-6 pb-32 animate-fadeIn">
+                    <div className={`flex flex-col sm:flex-row justify-between items-center sticky top-0 bg-slate-900/95 backdrop-blur-md z-10 p-4 border-b shadow-lg -mx-4 gap-2 ${attackMode ? 'border-red-800/50' : 'border-slate-800'}`}>
+                        <div className="flex flex-col items-center sm:items-start">
+                            <h2 className="text-lg font-bold text-slate-200">Level {targetLevel} Assessment</h2>
+                            {attackMode && <span className="text-xs font-bold text-red-500 animate-pulse tracking-widest">ATTACK MODE ACTIVE</span>}
+                        </div>
+                        <div className="text-sm text-slate-400 bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700">Errors marked: <span className="text-white font-bold">{Object.values(userAnswers).reduce((a,b)=>a+b, 0)}</span> / 30</div>
                     </div>
-                    <div className="space-y-8">{testData.questions.map((q) => ( <div key={q.id} className={`glass-panel p-6 rounded-xl ${attackMode ? 'border-red-900/30' : ''}`}><div className="flex justify-between items-center mb-3"><span className="text-xs font-bold bg-slate-800 text-indigo-300 px-2 py-1 rounded">{q.sector}</span><div className="flex items-center gap-3 bg-slate-800 rounded-lg p-1"><button onClick={() => handleDecrement(q.id)} className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white">-</button><span className="font-mono w-6 text-center font-bold">{userAnswers[q.id]}</span><button onClick={() => handleIncrement(q.id)} className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white">+</button></div></div><p className="text-lg text-slate-200 leading-relaxed font-serif">{q.text}</p></div> ))}</div>
-                    <div className="fixed bottom-6 left-0 right-0 px-4 max-w-4xl mx-auto"><button onClick={handleSubmit} className={`w-full text-white font-bold py-4 rounded-xl shadow-lg transition transform hover:-translate-y-1 ${attackMode ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'}`}>Submit Protocol</button></div>
+                    
+                    <div className="space-y-8">
+                        {testData.questions.map((q) => ( 
+                            <div key={q.id} className={`glass-panel p-6 sm:p-8 rounded-2xl transition-all ${attackMode ? 'border-red-900/30 hover:border-red-500/50' : 'hover:border-indigo-500/50'}`}>
+                                <div className="flex justify-between items-center mb-6">
+                                    <span className="text-xs font-bold bg-slate-800 text-indigo-300 px-3 py-1.5 rounded-full uppercase tracking-wider">{q.sector}</span>
+                                    <div className="flex items-center gap-1 bg-slate-800 rounded-lg p-1 border border-slate-700">
+                                        <button onClick={() => handleDecrement(q.id)} className="w-8 h-8 flex items-center justify-center hover:bg-slate-700 rounded text-slate-400 hover:text-white font-bold text-lg transition">-</button>
+                                        <span className="font-mono w-8 text-center font-bold text-lg text-white">{userAnswers[q.id]}</span>
+                                        <button onClick={() => handleIncrement(q.id)} className="w-8 h-8 flex items-center justify-center hover:bg-slate-700 rounded text-slate-400 hover:text-white font-bold text-lg transition">+</button>
+                                    </div>
+                                </div>
+                                <p className="text-lg sm:text-xl text-slate-200 leading-relaxed font-serif">{q.text}</p>
+                            </div> 
+                        ))}
+                    </div>
+                    
+                    <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-900 via-slate-900/90 to-transparent z-20 pointer-events-none">
+                        <div className="max-w-4xl mx-auto pointer-events-auto">
+                            <button onClick={handleSubmit} className={`w-full text-white font-bold py-4 rounded-xl shadow-2xl transition transform hover:-translate-y-1 text-lg ${attackMode ? 'bg-red-600 hover:bg-red-500 shadow-red-900/50' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/50'}`}>
+                                Submit Protocol
+                            </button>
+                        </div>
+                    </div>
                 </div>
             );
         }
 
-        // ================= MAIN CONTROLLER (THE FIX) =================
+        // ================= MAIN CONTROLLER =================
         function App() {
-            const [user, setUser] = useState(null);
-            const [userData, setUserData] = useState(null);
-            const [view, setView] = useState('welcome');
-            const [isOffline, setIsOffline] = useState(false);
+            // Memory State (Local Storage replaces Firebase)
+            const defaultProfile = { 
+                testsTaken: 0, 
+                averageScore: 0, 
+                radar: { science: 50, religion: 50, pseudo: 50, supernat: 50, logic: 50 } 
+            };
             
-            // Game State
+            const [profile, setProfile] = useState(() => {
+                const saved = localStorage.getItem('rctq_profile_v2');
+                return saved ? JSON.parse(saved) : defaultProfile;
+            });
+
+            // Save to localStorage whenever profile changes
+            useEffect(() => {
+                localStorage.setItem('rctq_profile_v2', JSON.stringify(profile));
+            }, [profile]);
+
+            const [view, setView] = useState('welcome'); // 'welcome' | 'dashboard' | 'game'
+            
+            // Game Config State
             const [selectedLevel, setSelectedLevel] = useState(1);
             const [attackMode, setAttackMode] = useState(false);
             const [selectedSector, setSelectedSector] = useState('random');
             const [scenarioMode, setScenarioMode] = useState('standard');
 
-            useEffect(() => {
-                if (!auth) { setIsOffline(true); return; }
-                const unsubscribe = auth.onAuthStateChanged(async (u) => {
-                    if (u) {
-                        setUser(u);
-                        // Fetch or Create User Data
-                        try {
-                            const docRef = db.collection('artifacts').doc(appId).collection('users').doc(u.uid);
-                            const doc = await docRef.get();
-                            if (doc.exists) {
-                                setUserData(doc.data());
-                                setView('dashboard');
-                            } else {
-                                const newProfile = { 
-                                    isPremium: false, 
-                                    testsTaken: 0, 
-                                    averageScore: 0, 
-                                    radar: { science: 50, religion: 50, pseudo: 50, supernat: 50, logic: 50 } 
-                                };
-                                await docRef.set(newProfile);
-                                setUserData(newProfile);
-                                setView('dashboard');
-                            }
-                        } catch (e) {
-                            console.error("DB Error", e);
-                            // Fallback for offline/error
-                            setUserData({ isPremium: false, testsTaken: 0, averageScore: 0 });
-                            setView('dashboard');
-                        }
-                    } else {
-                        setUser(null);
-                        setUserData(null);
-                        setView('welcome');
-                    }
-                });
-                return () => unsubscribe();
-            }, []);
-
-            const handleLogin = async () => {
-                if (!auth) {
-                    setIsOffline(true);
-                    setUserData({ isPremium: true, testsTaken: 0, averageScore: 0 }); // Offline default
-                    setView('dashboard');
-                    return;
-                }
-                const provider = new firebase.auth.GoogleAuthProvider();
-                try {
-                    await auth.signInWithPopup(provider);
-                } catch (e) {
-                    console.error("Login Error", e);
-                    alert("Login failed. Check console or try again.");
-                }
-            };
-
-            const handleLogout = () => {
-                if(auth) auth.signOut();
-                setView('welcome');
-            };
-
-            const updateUserData = (newData) => {
-                setUserData(newData);
-                if (user && db) {
-                    db.collection('artifacts').doc(appId).collection('users').doc(user.uid).update(newData);
-                }
-            };
-
             return (
-                <div className="container mx-auto max-w-4xl p-4 min-h-screen">
-                    <div className="flex justify-between items-center mb-6">
-                        <h1 className="text-xl font-bold tracking-tighter text-indigo-400">RCTQ <span className="text-slate-600">ENGINE v1.0</span></h1>
-                        {user && <div className="text-xs text-slate-500">{user.email}</div>}
+                <ToastProvider>
+                    <div className="container mx-auto max-w-4xl p-4 sm:p-6 min-h-screen">
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
+                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setView('dashboard')}>
+                                <div className="bg-indigo-600 p-1.5 rounded-lg"><Brain className="w-5 h-5 text-white" /></div>
+                                <h1 className="text-xl font-bold tracking-tighter text-white">RCTQ <span className="text-indigo-400 font-mono text-sm ml-1">PUBLIC</span></h1>
+                            </div>
+                            {view !== 'welcome' && (
+                                <button onClick={() => setView('welcome')} className="text-xs text-slate-500 hover:text-white transition uppercase tracking-wider font-bold">
+                                    Home
+                                </button>
+                            )}
+                        </div>
+
+                        {view === 'welcome' && <WelcomeView onStart={() => setView('dashboard')} />}
+                        
+                        {view === 'dashboard' && (
+                            <Dashboard 
+                                profile={profile} 
+                                setView={setView}
+                                selectedLevel={selectedLevel} setSelectedLevel={setSelectedLevel}
+                                attackMode={attackMode} setAttackMode={setAttackMode}
+                                selectedSector={selectedSector} setSelectedSector={setSelectedSector}
+                                scenarioMode={scenarioMode} setScenarioMode={setScenarioMode}
+                            />
+                        )}
+
+                        {view === 'game' && (
+                            <GameEngine 
+                                profile={profile}
+                                setUpdateProfile={setProfile}
+                                setView={setView}
+                                targetLevel={selectedLevel}
+                                attackMode={attackMode}
+                                selectedSector={selectedSector}
+                                scenarioMode={scenarioMode}
+                            />
+                        )}
                     </div>
-
-                    {view === 'welcome' && <WelcomeView onLogin={handleLogin} isOffline={isOffline} />}
-                    
-                    {view === 'dashboard' && userData && (
-                        <Dashboard 
-                            user={user} 
-                            userData={userData} 
-                            setUpdateUserData={updateUserData}
-                            setView={setView}
-                            selectedLevel={selectedLevel} setSelectedLevel={setSelectedLevel}
-                            attackMode={attackMode} setAttackMode={setAttackMode}
-                            selectedSector={selectedSector} setSelectedSector={setSelectedSector}
-                            scenarioMode={scenarioMode} setScenarioMode={setScenarioMode}
-                            isOffline={isOffline}
-                            onLogout={handleLogout}
-                        />
-                    )}
-
-                    {view === 'game' && (
-                        <GameEngine 
-                            user={user}
-                            userData={userData}
-                            setUpdateUserData={updateUserData}
-                            setView={setView}
-                            targetLevel={selectedLevel}
-                            attackMode={attackMode}
-                            selectedSector={selectedSector}
-                            scenarioMode={scenarioMode}
-                            isOffline={isOffline}
-                        />
-                    )}
-                </div>
+                </ToastProvider>
             );
         }
 
+        // Mount the React Application
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
